@@ -95,7 +95,7 @@ function applyTargetToProp(propEntity)
 
                 local coords = GetEntityCoords(entity)
                 DeleteEntity(entity)
-                TriggerServerEvent('rsm_placeable:deleteProp', modelName, {
+                TriggerServerEvent('tk_placeable:deleteProp', modelName, {
                     x = coords.x, y = coords.y, z = coords.z
                 })
 
@@ -292,10 +292,10 @@ function spawnProp(modelName, fromItemName)
     local coords = GetEntityCoords(prop)
     local rot = GetEntityRotation(prop, 2)
 
-    TriggerServerEvent('rsm_placeable:server:saveProp', modelName, coords, rot)
+    TriggerServerEvent('tk_placeable:server:saveProp', modelName, coords, rot)
 
     if fromItemName then
-        TriggerServerEvent('rsm_placeable:server:consumeItem', fromItemName)
+        TriggerServerEvent('tk_placeable:server:consumeItem', fromItemName)
     end
 
     if applyTargetToProp then
@@ -312,11 +312,11 @@ end
 -----------------------------
 -- EVENTS
 -----------------------------
-RegisterNetEvent("rsm_placeable:client:placeSingleProp", function(modelName)
+RegisterNetEvent("tk_placeable:client:placeSingleProp", function(modelName)
     spawnProp(modelName, GetItemNameFromModel(modelName))
 end)
 
-RegisterNetEvent('rsm_placeable:client:loadProp', function(modelName, pos, rot)
+RegisterNetEvent('tk_placeable:client:loadProp', function(modelName, pos, rot)
     lib.requestModel(modelName)
     local prop = CreateObject(GetHashKey(modelName), pos.x, pos.y, pos.z, false, false, false, false, true)
     SetEntityRotation(prop, rot.x, rot.y, rot.z, 2, true)

@@ -12,7 +12,7 @@ local function GetItemFromModel(modelName)
 end
 
 -- Hapus prop dari DB dan kembalikan item ke player
-RegisterNetEvent('rsm_placeable:deleteProp', function(modelName, coords)
+RegisterNetEvent('tk_placeable:deleteProp', function(modelName, coords)
     local src = source
 
     if not coords or not coords.x then
@@ -20,7 +20,7 @@ RegisterNetEvent('rsm_placeable:deleteProp', function(modelName, coords)
         return
     end
 
-    MySQL.query('SELECT id, position FROM rsm_placeable WHERE model = ?', { modelName }, function(results)
+    MySQL.query('SELECT id, position FROM tk_placeable WHERE model = ?', { modelName }, function(results)
         for _, row in ipairs(results) do
             local pos = json.decode(row.position)
 
@@ -31,7 +31,7 @@ RegisterNetEvent('rsm_placeable:deleteProp', function(modelName, coords)
                 local dist = math.sqrt(dx * dx + dy * dy + dz * dz)
 
                 if dist < 0.1 then -- toleransi 10 cm
-                    MySQL.execute('DELETE FROM rsm_placeable WHERE id = ?', { row.id })
+                    MySQL.execute('DELETE FROM tk_placeable WHERE id = ?', { row.id })
                     print(('[INFO] Deleted prop from DB: model=%s, pos=%.2f, %.2f, %.2f'):format(modelName, pos.x, pos.y, pos.z))
 
                     local itemName = GetItemFromModel(modelName)
@@ -50,7 +50,7 @@ RegisterNetEvent('rsm_placeable:deleteProp', function(modelName, coords)
 end)
 
 -- Konsumsi item saat prop berhasil dipasang
-RegisterNetEvent('rsm_placeable:server:consumeItem', function(itemName)
+RegisterNetEvent('tk_placeable:server:consumeItem', function(itemName)
     local src = source
     local Player = RSGCore.Functions.GetPlayer(src)
     if Player and itemName then
@@ -62,26 +62,26 @@ end)
 -- Register semua prop sebagai item usable
 for _, prop in pairs(propsConfig.availableProps) do
     RSGCore.Functions.CreateUseableItem(prop.item, function(source, item)
-        TriggerClientEvent('rsm_placeable:client:placeSingleProp', source, prop.model)
+        TriggerClientEvent('tk_placeable:client:placeSingleProp', source, prop.model)
     end)
 end
 
 -- Simpan ke database
-RegisterNetEvent('rsm_placeable:server:saveProp', function(modelName, coords, rot)
+RegisterNetEvent('tk_placeable:server:saveProp', function(modelName, coords, rot)
     local posData = json.encode({ x = coords.x, y = coords.y, z = coords.z })
     local rotData = json.encode({ x = rot.x, y = rot.y, z = rot.z })
 
-    MySQL.insert('INSERT INTO rsm_placeable (model, position, rotation) VALUES (?, ?, ?)', {
+    MySQL.insert('INSERT INTO tk_placeable (model, position, rotation) VALUES (?, ?, ?)', {
         modelName, posData, rotData
     })
 end)
 
 -- Fungsi untuk load prop dari database ke memory dan broadcast ke client
 local function loadAllProps()
-    print("^2[rsm_placeable]^7 Loading placed props from database...")
+    print("^2[tk_placeable]^7 Loading placed props from database...")
 
     local success, results = pcall(function()
-        return MySQL.query.await('SELECT * FROM rsm_placeable')
+        return MySQL.query.await('SELECT * FROM tk_placeable')
     end)
 
     if not success then
@@ -95,10 +95,10 @@ local function loadAllProps()
         local modelName = row.model
         local position = json.decode(row.position)
         local rotation = json.decode(row.rotation)
-        TriggerClientEvent('rsm_placeable:client:loadProp', -1, modelName, position, rotation)
+        TriggerClientEvent('tk_placeable:client:loadProp', -1, modelName, position, rotation)
     end
 
-    print("^2[rsm_placeable]^7 Loaded " .. tostring(#results) .. " props.")
+    print("^2[tk_placeable]^7 Loaded " .. tostring(#results) .. " props.")
 end
 
 AddEventHandler('onResourceStart', function(resource)
@@ -113,7 +113,7 @@ end)
 RegisterCommand('loadprops', function(source, args, raw)
     if source == 0 or IsPlayerAceAllowed(source, 'command.loadprops') then
         loadAllProps()
-        print("[rsm_placeable] Prop dari database telah dimuat.")
+        print("[tk_placeable] Prop dari database telah dimuat.")
     else
         TriggerClientEvent('ox_lib:notify', source, {
             description = "Kamu tidak punya izin untuk menjalankan perintah ini.",
@@ -128,6 +128,6 @@ RegisterNetEvent('RSGCore:Server:OnPlayerLoaded', function()
         local modelName = row.model
         local position = json.decode(row.position)
         local rotation = json.decode(row.rotation)
-        TriggerClientEvent('rsm_placeable:client:loadProp', playerId, modelName, position, rotation)
+        TriggerClientEvent('tk_placeable:client:loadProp', playerId, modelName, position, rotation)
     end
 end)
