@@ -1,17 +1,30 @@
 local spawnedProps = {}
-local placing = false
-local currentModelName = nil
-local currentItemName = nil
-local currentProp = nil -- tetap dipakai saat sedang placing
-local confirmed = false
-local heading = 0.0
-
 local PromptPlacerGroup = GetRandomIntInRange(0, 0xffffff)
+
+local CONTROL_HASH = {
+    ROTATE_LEFT = 0xA65EBAB4,
+    ROTATE_RIGHT = 0xDEB34313,
+    PLACE = 0xC7B5340A,
+    CANCEL = 0xF84FA74F
+}
+
+local AXIS_LENGTH = 0.20
+local RAYCAST_DISTANCE = 1000.0
+local PROP_SPAWN_HEIGHT = 2.0
+local ANIMATION_DURATION = 2000
+local MIN_DISTANCE_TO_PROP = 1.2
+
+local Prompts = {
+    cancel = nil,
+    place = nil,
+    rotateLeft = nil,
+    rotateRight = nil
+}
 
 -----------------------------
 -- FUNCTIONS
 -----------------------------
-function GetItemNameFromModel(model)
+local function GetItemNameFromModel(model)
     for _, prop in ipairs(propsConfig.availableProps) do
         if prop.model == model then
             return prop.item
@@ -20,7 +33,7 @@ function GetItemNameFromModel(model)
     return nil
 end
 
-function notify(msg)
+local function notify(msg)
     lib.notify({
         title = 'Prop Placer',
         description = msg,
@@ -28,22 +41,7 @@ function notify(msg)
     })
 end
 
-function GetEntityInFront(pos, distance)
-    local heading = GetEntityHeading(PlayerPedId())
-    local forward = GetForwardVectorFromHeading(heading)
-    local targetPos = pos + (forward * distance)
-
-    local ray = StartShapeTestRay(pos.x, pos.y, pos.z, targetPos.x, targetPos.y, targetPos.z, 16, PlayerPedId(), 0)
-    local _, hit, _, _, entity = GetShapeTestResult(ray)
-    return (hit == 1 and entity or nil)
-end
-
-function GetForwardVectorFromHeading(heading)
-    local rad = math.rad(heading)
-    return vector3(-math.sin(rad), math.cos(rad), 0.0)
-end
-
-function GetPropNameFromHash(hash)
+local function GetPropNameFromHash(hash)
     if not hash then
         print("[ERROR] GetPropNameFromHash: Hash is nil")
         return nil
@@ -60,7 +58,7 @@ function GetPropNameFromHash(hash)
     return nil
 end
 
-function GetLabelFromModel(modelName)
+local function GetLabelFromModel(modelName)
     for _, prop in ipairs(propsConfig.availableProps) do
         if prop.model == modelName then
             return prop.label
@@ -70,7 +68,7 @@ function GetLabelFromModel(modelName)
 end
 
 
-function applyTargetToProp(propEntity)
+local function applyTargetToProp(propEntity)
     if not propEntity or type(propEntity) ~= "number" or not DoesEntityExist(propEntity) then
         print("[ERROR] applyTargetToProp: Invalid or nil propEntity:", propEntity)
         return
@@ -113,60 +111,33 @@ function applyTargetToProp(propEntity)
     })
 end
 
--- Fungsi Prompt Setup (Sama seperti yang kamu punya)
-function Del()
-    local str = 'Cancel'
-    CancelPrompt = PromptRegisterBegin()
-    PromptSetControlAction(CancelPrompt, 0xF84FA74F)
-    str = CreateVarString(10, 'LITERAL_STRING', str)
-    PromptSetText(CancelPrompt, str)
-    PromptSetEnabled(CancelPrompt, true)
-    PromptSetVisible(CancelPrompt, true)
-    PromptSetHoldMode(CancelPrompt, true)
-    PromptSetGroup(CancelPrompt, PromptPlacerGroup)
-    PromptRegisterEnd(CancelPrompt)
+local function CreatePrompt(label, controlHash, holdMode)
+    local prompt = PromptRegisterBegin()
+    PromptSetControlAction(prompt, controlHash)
+    local str = CreateVarString(10, 'LITERAL_STRING', label)
+    PromptSetText(prompt, str)
+    PromptSetEnabled(prompt, true)
+    PromptSetVisible(prompt, true)
+    
+    if holdMode then
+        PromptSetHoldMode(prompt, true)
+    else
+        PromptSetStandardMode(prompt, true)
+    end
+    
+    PromptSetGroup(prompt, PromptPlacerGroup)
+    PromptRegisterEnd(prompt)
+    return prompt
 end
 
-function Set()
-    local str = 'Place'
-    SetPrompt = PromptRegisterBegin()
-    PromptSetControlAction(SetPrompt, 0xC7B5340A)
-    str = CreateVarString(10, 'LITERAL_STRING', str)
-    PromptSetText(SetPrompt, str)
-    PromptSetEnabled(SetPrompt, true)
-    PromptSetVisible(SetPrompt, true)
-    PromptSetHoldMode(SetPrompt, true)
-    PromptSetGroup(SetPrompt, PromptPlacerGroup)
-    PromptRegisterEnd(SetPrompt)
+local function InitializePrompts()
+    Prompts.cancel = CreatePrompt('Cancel', CONTROL_HASH.CANCEL, true)
+    Prompts.place = CreatePrompt('Place', CONTROL_HASH.PLACE, true)
+    Prompts.rotateLeft = CreatePrompt('Rotate Left', CONTROL_HASH.ROTATE_LEFT, false)
+    Prompts.rotateRight = CreatePrompt('Rotate Right', CONTROL_HASH.ROTATE_RIGHT, false)
 end
 
-function RotateLeft()
-    local str = 'Rotate Left'
-    RotateLeftPrompt = PromptRegisterBegin()
-    PromptSetControlAction(RotateLeftPrompt, 0xA65EBAB4)
-    str = CreateVarString(10, 'LITERAL_STRING', str)
-    PromptSetText(RotateLeftPrompt, str)
-    PromptSetEnabled(RotateLeftPrompt, true)
-    PromptSetVisible(RotateLeftPrompt, true)
-    PromptSetStandardMode(RotateLeftPrompt, true)
-    PromptSetGroup(RotateLeftPrompt, PromptPlacerGroup)
-    PromptRegisterEnd(RotateLeftPrompt)
-end
-
-function RotateRight()
-    local str = 'Rotate Right'
-    RotateRightPrompt = PromptRegisterBegin()
-    PromptSetControlAction(RotateRightPrompt, 0xDEB34313)
-    str = CreateVarString(10, 'LITERAL_STRING', str)
-    PromptSetText(RotateRightPrompt, str)
-    PromptSetEnabled(RotateRightPrompt, true)
-    PromptSetVisible(RotateRightPrompt, true)
-    PromptSetStandardMode(RotateRightPrompt, true)
-    PromptSetGroup(RotateRightPrompt, PromptPlacerGroup)
-    PromptRegisterEnd(RotateRightPrompt)
-end
-
-function RotationToDirection(rotation)
+local function RotationToDirection(rotation)
     local adjustedRotation = {
         x = math.rad(rotation.x),
         y = math.rad(rotation.y),
@@ -180,32 +151,38 @@ function RotationToDirection(rotation)
     return direction
 end
 
-function DrawPropAxes(prop)
+local function DrawPropAxes(prop)
     local propForward, propRight, propUp, propCoords = GetEntityMatrix(prop)
+    local baseCoords = propCoords + vector3(0, 0, 0.1)
 
-    local propXAxisEnd = propCoords + propRight * 0.20
-    local propYAxisEnd = propCoords + propForward * 0.20
-    local propZAxisEnd = propCoords + propUp * 0.20
+    local propXAxisEnd = propCoords + propRight * AXIS_LENGTH
+    local propYAxisEnd = propCoords + propForward * AXIS_LENGTH
+    local propZAxisEnd = propCoords + propUp * AXIS_LENGTH
 
-    DrawLine(propCoords.x, propCoords.y, propCoords.z + 0.1, propXAxisEnd.x, propXAxisEnd.y, propXAxisEnd.z, 255, 0, 0, 255)
-    DrawLine(propCoords.x, propCoords.y, propCoords.z + 0.1, propYAxisEnd.x, propYAxisEnd.y, propYAxisEnd.z, 0, 255, 0, 255)
-    DrawLine(propCoords.x, propCoords.y, propCoords.z + 0.1, propZAxisEnd.x, propZAxisEnd.y, propZAxisEnd.z, 0, 0, 255, 255)
+    DrawLine(baseCoords.x, baseCoords.y, baseCoords.z, propXAxisEnd.x, propXAxisEnd.y, propXAxisEnd.z, 255, 0, 0, 255)
+    DrawLine(baseCoords.x, baseCoords.y, baseCoords.z, propYAxisEnd.x, propYAxisEnd.y, propYAxisEnd.z, 0, 255, 0, 255)
+    DrawLine(baseCoords.x, baseCoords.y, baseCoords.z, propZAxisEnd.x, propZAxisEnd.y, propZAxisEnd.z, 0, 0, 255, 255)
 end
 
-function RayCastGamePlayCamera(distance)
+local function RayCastGamePlayCamera(distance)
     local cameraRotation = GetGameplayCamRot()
     local cameraCoord = GetGameplayCamCoord()
     local direction = RotationToDirection(cameraRotation)
-    local destination = {
-        x = cameraCoord.x + direction.x * distance,
-        y = cameraCoord.y + direction.y * distance,
-        z = cameraCoord.z + direction.z * distance
-    }
-    local a, hit, coords, d, e = GetShapeTestResult(StartShapeTestRay(cameraCoord.x, cameraCoord.y, cameraCoord.z, destination.x, destination.y, destination.z, -1, PlayerPedId(), 0))
-    return hit, coords, e
+    local destination = cameraCoord + vector3(
+        direction.x * distance,
+        direction.y * distance,
+        direction.z * distance
+    )
+    
+    local _, hit, coords, _, entity = GetShapeTestResult(StartShapeTestRay(
+        cameraCoord.x, cameraCoord.y, cameraCoord.z,
+        destination.x, destination.y, destination.z,
+        -1, PlayerPedId(), 0
+    ))
+    return hit, coords, entity
 end
 
-function spawnProp(modelName, fromItemName)
+local function spawnProp(modelName, fromItemName)
     if type(modelName) ~= "string" then
         notify("Model tidak valid.")
         return
@@ -213,53 +190,81 @@ function spawnProp(modelName, fromItemName)
 
     lib.requestModel(modelName)
 
-    local hit, coords, entity
-    while not hit do
-        hit, coords, entity = RayCastGamePlayCamera(1000.0)
+    local hit, coords = RayCastGamePlayCamera(RAYCAST_DISTANCE)
+    while hit ~= 1 or not coords do
         Wait(0)
+        hit, coords = RayCastGamePlayCamera(RAYCAST_DISTANCE)
     end
 
-    local prop = CreateObject(modelName, coords.x, coords.y, coords.z + 2.0, true, false, true)
+    local prop = CreateObject(modelName, coords.x, coords.y, coords.z + PROP_SPAWN_HEIGHT, true, false, true)
+    if not prop or prop == 0 then
+        notify("Gagal membuat prop.")
+        SetModelAsNoLongerNeeded(modelName)
+        return
+    end
+
     FreezeEntityPosition(prop, true)
     SetEntityAlpha(prop, 180, false)
     SetEntityCollision(prop, false, false)
+    SetEntityCoordsNoOffset(prop, coords.x, coords.y, coords.z, false, false, false, true)
+    PlaceObjectOnGroundProperly(prop)
 
     local heading = 0.0
+    local lastCoords = coords
+    local lastHeading = heading
+    local groupName = CreateVarString(10, 'LITERAL_STRING', 'ROSESMILES PLACEBALES')
 
     while true do
-        hit, coords, entity = RayCastGamePlayCamera(1000.0)
-        SetEntityCoordsNoOffset(prop, coords.x, coords.y, coords.z, false, false, false, true)
-        PlaceObjectOnGroundProperly(prop)
-        DrawPropAxes(prop)
+        Wait(0)
 
-        local groupName = CreateVarString(10, 'LITERAL_STRING', 'ROSESMILES PLACEBALES')
-        PromptSetActiveGroupThisFrame(PromptPlacerGroup, groupName)
+        hit, coords = RayCastGamePlayCamera(RAYCAST_DISTANCE)
+        if hit == 1 and coords then
+            local moved = not lastCoords
+                or math.abs(coords.x - lastCoords.x) > 0.001
+                or math.abs(coords.y - lastCoords.y) > 0.001
+                or math.abs(coords.z - lastCoords.z) > 0.001
 
-        if IsControlPressed(1, 0xA65EBAB4) then
-            heading += 1.0
-        elseif IsControlPressed(1, 0xDEB34313) then
-            heading -= 1.0
+            if moved then
+                SetEntityCoordsNoOffset(prop, coords.x, coords.y, coords.z, false, false, false, true)
+                PlaceObjectOnGroundProperly(prop)
+                lastCoords = coords
+            end
         end
 
-        if heading > 360.0 then heading = 0.0 end
-        if heading < 0.0 then heading = 360.0 end
+        PromptSetActiveGroupThisFrame(PromptPlacerGroup, groupName)
+        DrawPropAxes(prop)
 
-        SetEntityHeading(prop, heading)
+        local rotationChanged = false
+        if IsControlPressed(1, CONTROL_HASH.ROTATE_LEFT) then
+            heading += 1.0
+            rotationChanged = true
+        elseif IsControlPressed(1, CONTROL_HASH.ROTATE_RIGHT) then
+            heading -= 1.0
+            rotationChanged = true
+        end
 
-        if PromptHasHoldModeCompleted(SetPrompt) then
+        if heading > 360.0 then
+            heading = 0.0
+        elseif heading < 0.0 then
+            heading = 360.0
+        end
+
+        if rotationChanged and heading ~= lastHeading then
+            SetEntityHeading(prop, heading)
+            lastHeading = heading
+        end
+
+        if PromptHasHoldModeCompleted(Prompts.place) then
             break
         end
 
-        if PromptHasHoldModeCompleted(CancelPrompt) then
+        if PromptHasHoldModeCompleted(Prompts.cancel) then
             DeleteEntity(prop)
             SetModelAsNoLongerNeeded(modelName)
             return
         end
-
-        Wait(0)
     end
 
-    -- Lanjutkan penempatan (langsung, tanpa perlu F)
     SetEntityAlpha(prop, 255, false)
     SetEntityCollision(prop, true, true)
     FreezeEntityPosition(prop, false)
@@ -269,44 +274,46 @@ function spawnProp(modelName, fromItemName)
 
     TaskGoStraightToCoord(playerPed, propCoords.x, propCoords.y, propCoords.z, 1.0, -1, GetEntityHeading(playerPed), 0.0)
 
-    while #(GetEntityCoords(playerPed) - propCoords) > 1.2 do
+    local playerPosition = GetEntityCoords(playerPed)
+    while Vdist(playerPosition.x, playerPosition.y, playerPosition.z, propCoords.x, propCoords.y, propCoords.z) > MIN_DISTANCE_TO_PROP do
         Wait(0)
+        playerPosition = GetEntityCoords(playerPed)
     end
 
     ClearPedTasksImmediately(playerPed)
     FreezeEntityPosition(playerPed, true)
 
-    local headingToProp = GetHeadingFromVector_2d(propCoords.x - GetEntityCoords(playerPed).x, propCoords.y - GetEntityCoords(playerPed).y)
+    local headingToProp = GetHeadingFromVector_2d(propCoords.x - playerPosition.x, propCoords.y - playerPosition.y)
     SetEntityHeading(playerPed, headingToProp)
 
     local animDict = "amb_work@world_human_hammer@wall@male_a@trans"
     local animName = "a_trans_kneel_a"
     RequestAnimDict(animDict)
-    while not HasAnimDictLoaded(animDict) do Wait(10) end
+    while not HasAnimDictLoaded(animDict) do
+        Wait(10)
+    end
     TaskPlayAnim(playerPed, animDict, animName, 4.0, -4.0, -1, 1, 0.0, false, 0, false, 0, false)
 
-    Wait(2000) -- Durasi animasi secukupnya
+    Wait(ANIMATION_DURATION)
 
     FreezeEntityPosition(prop, true)
 
-    local coords = GetEntityCoords(prop)
+    local savedCoords = GetEntityCoords(prop)
     local rot = GetEntityRotation(prop, 2)
 
-    TriggerServerEvent('tk_placeable:server:saveProp', modelName, coords, rot)
+    TriggerServerEvent('tk_placeable:server:saveProp', modelName, savedCoords, rot)
 
     if fromItemName then
         TriggerServerEvent('tk_placeable:server:consumeItem', fromItemName)
     end
 
-    if applyTargetToProp then
-        applyTargetToProp(prop)
-    end
-
+    applyTargetToProp(prop)
     table.insert(spawnedProps, prop)
     notify("Prop disimpan.")
 
     ClearPedTasks(playerPed)
     FreezeEntityPosition(playerPed, false)
+    SetModelAsNoLongerNeeded(modelName)
 end
 
 -----------------------------
@@ -339,12 +346,4 @@ AddEventHandler('onResourceStop', function(resourceName)
     spawnedProps = {} -- Kosongkan array
 end)
 
------------------------------
--- LOOPING
------------------------------
-CreateThread(function()
-    Set()
-    Del()
-    RotateLeft()
-    RotateRight()
-end)
+InitializePrompts()

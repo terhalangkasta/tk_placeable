@@ -1,7 +1,9 @@
 local RSGCore = exports['rsg-core']:GetCoreObject()
 local propsCache = {}
+local propsLoaded = false
 
--- Ambil item berdasarkan model
+local DISTANCE_TOLERANCE = 0.1
+
 local function GetItemFromModel(modelName)
     for _, prop in ipairs(propsConfig.availableProps) do
         if prop.model == modelName then
@@ -11,7 +13,6 @@ local function GetItemFromModel(modelName)
     return nil
 end
 
--- Hapus prop dari DB dan kembalikan item ke player
 RegisterNetEvent('tk_placeable:deleteProp', function(modelName, coords)
     local src = source
 
@@ -30,7 +31,7 @@ RegisterNetEvent('tk_placeable:deleteProp', function(modelName, coords)
                 local dz = coords.z - pos.z
                 local dist = math.sqrt(dx * dx + dy * dy + dz * dz)
 
-                if dist < 0.1 then -- toleransi 10 cm
+                if dist < DISTANCE_TOLERANCE then
                     MySQL.execute('DELETE FROM tk_placeable WHERE id = ?', { row.id })
                     print(('[INFO] Deleted prop from DB: model=%s, pos=%.2f, %.2f, %.2f'):format(modelName, pos.x, pos.y, pos.z))
 
@@ -76,7 +77,6 @@ RegisterNetEvent('tk_placeable:server:saveProp', function(modelName, coords, rot
     })
 end)
 
--- Fungsi untuk load prop dari database ke memory dan broadcast ke client
 local function loadAllProps()
     print("^2[tk_placeable]^7 Loading placed props from database...")
 
@@ -89,16 +89,17 @@ local function loadAllProps()
         return
     end
 
-    propsCache = results
+    propsCache = results or {}
+    propsLoaded = true
 
-    for _, row in ipairs(results) do
+    for _, row in ipairs(propsCache) do
         local modelName = row.model
         local position = json.decode(row.position)
         local rotation = json.decode(row.rotation)
         TriggerClientEvent('tk_placeable:client:loadProp', -1, modelName, position, rotation)
     end
 
-    print("^2[tk_placeable]^7 Loaded " .. tostring(#results) .. " props.")
+    print("^2[tk_placeable]^7 Loaded " .. tostring(#propsCache) .. " props.")
 end
 
 AddEventHandler('onResourceStart', function(resource)
@@ -123,6 +124,10 @@ RegisterCommand('loadprops', function(source, args, raw)
 end, false)
 
 RegisterNetEvent('RSGCore:Server:OnPlayerLoaded', function()
+    if not propsLoaded or not propsCache then
+        return
+    end
+    
     local playerId = source
     for _, row in ipairs(propsCache) do
         local modelName = row.model
