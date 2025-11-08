@@ -2,10 +2,8 @@ local RSGCore = exports['rsg-core']:GetCoreObject()
 local propsCache = {}
 local propsLoaded = false
 
-local DISTANCE_TOLERANCE = 0.1
-
 local function GetItemFromModel(modelName)
-    for _, prop in ipairs(propsConfig.availableProps) do
+    for _, prop in ipairs(Config.availableProps) do
         if prop.model == modelName then
             return prop.item
         end
@@ -17,7 +15,7 @@ RegisterNetEvent('tk_placeable:deleteProp', function(modelName, coords)
     local src = source
 
     if not coords or not coords.x then
-        print("[ERROR] Koordinat dari client tidak valid", json.encode(coords))
+        print(Lang:t('logs.invalid_coords', { coords = json.encode(coords) }))
         return
     end
 
@@ -31,9 +29,9 @@ RegisterNetEvent('tk_placeable:deleteProp', function(modelName, coords)
                 local dz = coords.z - pos.z
                 local dist = math.sqrt(dx * dx + dy * dy + dz * dz)
 
-                if dist < DISTANCE_TOLERANCE then
+                if dist < Config.objectOptions.minDistanceToProp then
                     MySQL.execute('DELETE FROM tk_placeable WHERE id = ?', { row.id })
-                    print(('[INFO] Deleted prop from DB: model=%s, pos=%.2f, %.2f, %.2f'):format(modelName, pos.x, pos.y, pos.z))
+                    print(Lang:t('logs.db_deleted', { model = modelName, coords = ('%.2f, %.2f, %.2f'):format(pos.x, pos.y, pos.z) }))
 
                     local itemName = GetItemFromModel(modelName)
                     if itemName then
@@ -50,7 +48,6 @@ RegisterNetEvent('tk_placeable:deleteProp', function(modelName, coords)
     end)
 end)
 
--- Konsumsi item saat prop berhasil dipasang
 RegisterNetEvent('tk_placeable:server:consumeItem', function(itemName)
     local src = source
     local Player = RSGCore.Functions.GetPlayer(src)
@@ -60,14 +57,12 @@ RegisterNetEvent('tk_placeable:server:consumeItem', function(itemName)
     end
 end)
 
--- Register semua prop sebagai item usable
-for _, prop in pairs(propsConfig.availableProps) do
+for _, prop in pairs(Config.availableProps) do
     RSGCore.Functions.CreateUseableItem(prop.item, function(source, item)
         TriggerClientEvent('tk_placeable:client:placeSingleProp', source, prop.model)
     end)
 end
 
--- Simpan ke database
 RegisterNetEvent('tk_placeable:server:saveProp', function(modelName, coords, rot)
     local posData = json.encode({ x = coords.x, y = coords.y, z = coords.z })
     local rotData = json.encode({ x = rot.x, y = rot.y, z = rot.z })
@@ -78,14 +73,14 @@ RegisterNetEvent('tk_placeable:server:saveProp', function(modelName, coords, rot
 end)
 
 local function loadAllProps()
-    print("^2[tk_placeable]^7 Loading placed props from database...")
+    print(Lang:t('logs.loading'))
 
     local success, results = pcall(function()
         return MySQL.query.await('SELECT * FROM tk_placeable')
     end)
 
     if not success then
-        print("^1[ERROR]^7 Failed to load props from database: " .. tostring(results))
+        print(Lang:t('logs.load_failed', { error = tostring(results) }))
         return
     end
 
@@ -99,7 +94,7 @@ local function loadAllProps()
         TriggerClientEvent('tk_placeable:client:loadProp', -1, modelName, position, rotation)
     end
 
-    print("^2[tk_placeable]^7 Loaded " .. tostring(#propsCache) .. " props.")
+    print(Lang:t('logs.loaded_count', { count = #propsCache }))
 end
 
 AddEventHandler('onResourceStart', function(resource)
@@ -114,11 +109,11 @@ end)
 RegisterCommand('loadprops', function(source, args, raw)
     if source == 0 or IsPlayerAceAllowed(source, 'command.loadprops') then
         loadAllProps()
-        print("[tk_placeable] Prop dari database telah dimuat.")
+        print(Lang:t('logs.reload_complete'))
     else
         TriggerClientEvent('ox_lib:notify', source, {
-            description = "Kamu tidak punya izin untuk menjalankan perintah ini.",
-            type = "error"
+            description = Lang:t('command.no_permission'),
+            type = 'error'
         })
     end
 end, false)

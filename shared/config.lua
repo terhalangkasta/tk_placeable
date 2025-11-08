@@ -1,9 +1,28 @@
-propsConfig = {}
+Config = {}
+
+Config.controlHash = {
+    ROTATE_LEFT = 0xA65EBAB4,
+    ROTATE_RIGHT = 0xDEB34313,
+    PLACE = 0xC7B5340A,
+    CANCEL = 0xF84FA74F
+}
+
+Config.objectOptions = {
+    axisLength = 0.20,
+    raycastDistance = 1000.0,
+    propSpawnHeight = 2.0,
+    animationDuration = 2000,
+    minDistanceToProp = 1.2,
+    rotationStep = 1.0,
+    movementThreshold = 0.005,
+    raycastUpdateMs = 75,
+    groundSnapInterval = 150
+}
 
 ---------------------------------
 -- PROPS
 ---------------------------------
-propsConfig.availableProps = {
+Config.availableProps = {
     { label = "Fence",           model = "val_fencepen01_ax",               item = "fence_prop_1" },
     { label = "Fence 2",         model = "val_fencepen01_bx",               item = "fence_prop_2" },
     { label = "Fence 3",         model = "val_fencepen01_cx",               item = "fence_prop_3" },
