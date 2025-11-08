@@ -1,19 +1,6 @@
 local spawnedProps = {}
 local PromptPlacerGroup = GetRandomIntInRange(0, 0xffffff)
 
-local CONTROL_HASH = {
-    ROTATE_LEFT = 0xA65EBAB4,
-    ROTATE_RIGHT = 0xDEB34313,
-    PLACE = 0xC7B5340A,
-    CANCEL = 0xF84FA74F
-}
-
-local AXIS_LENGTH = 0.20
-local RAYCAST_DISTANCE = 1000.0
-local PROP_SPAWN_HEIGHT = 2.0
-local ANIMATION_DURATION = 2000
-local MIN_DISTANCE_TO_PROP = 1.2
-
 local Prompts = {
     cancel = nil,
     place = nil,
@@ -25,7 +12,7 @@ local Prompts = {
 -- FUNCTIONS
 -----------------------------
 local function GetItemNameFromModel(model)
-    for _, prop in ipairs(propsConfig.availableProps) do
+    for _, prop in ipairs(Config.availableProps) do
         if prop.model == model then
             return prop.item
         end
@@ -33,11 +20,11 @@ local function GetItemNameFromModel(model)
     return nil
 end
 
-local function notify(msg)
+local function notify(key, subs, notifType)
     lib.notify({
-        title = 'Prop Placer',
-        description = msg,
-        type = 'inform'
+        title = Lang:t('notify.title'),
+        description = Lang:t(key, subs),
+        type = notifType or 'inform'
     })
 end
 
@@ -47,24 +34,24 @@ local function GetPropNameFromHash(hash)
         return nil
     end
 
-    for _, prop in ipairs(propsConfig.availableProps) do
+    for _, prop in ipairs(Config.availableProps) do
         local model = prop.model
         if model and GetHashKey(model) == hash then
             return model
         end
     end
 
-    print(string.format("[DEBUG] No matching prop found for hash: %s", hash))
+    print(Lang:t('debug.no_prop_match', { hash = hash }))
     return nil
 end
 
 local function GetLabelFromModel(modelName)
-    for _, prop in ipairs(propsConfig.availableProps) do
+    for _, prop in ipairs(Config.availableProps) do
         if prop.model == modelName then
             return prop.label
         end
     end
-    return "Tidak Dikenal"
+    return Lang:t('text.unknown_prop')
 end
 
 
@@ -82,7 +69,7 @@ local function applyTargetToProp(propEntity)
         {
             name = "delete_prop",
             icon = "fas fa-trash",
-            label = ("Pickup : %s"):format(labelName),
+            label = Lang:t('text.pickup', { label = labelName }),
 
             onSelect = function(data)
                 local entity = data.entity
@@ -104,7 +91,7 @@ local function applyTargetToProp(propEntity)
                     end
                 end
 
-                notify("Prop dihapus.")
+                notify('notify.prop_removed', nil, 'success')
                 print(string.format("[INFO] Deleted prop '%s' at coords %s", modelName, coords))
             end
         }
@@ -131,10 +118,10 @@ local function CreatePrompt(label, controlHash, holdMode)
 end
 
 local function InitializePrompts()
-    Prompts.cancel = CreatePrompt('Cancel', CONTROL_HASH.CANCEL, true)
-    Prompts.place = CreatePrompt('Place', CONTROL_HASH.PLACE, true)
-    Prompts.rotateLeft = CreatePrompt('Rotate Left', CONTROL_HASH.ROTATE_LEFT, false)
-    Prompts.rotateRight = CreatePrompt('Rotate Right', CONTROL_HASH.ROTATE_RIGHT, false)
+    Prompts.cancel = CreatePrompt(Lang:t('prompts.cancel'), Config.controlHash.CANCEL, true)
+    Prompts.place = CreatePrompt(Lang:t('prompts.place'), Config.controlHash.PLACE, true)
+    Prompts.rotateLeft = CreatePrompt(Lang:t('prompts.rotate_left'), Config.controlHash.ROTATE_LEFT, false)
+    Prompts.rotateRight = CreatePrompt(Lang:t('prompts.rotate_right'), Config.controlHash.ROTATE_RIGHT, false)
 end
 
 local function RotationToDirection(rotation)
@@ -155,9 +142,10 @@ local function DrawPropAxes(prop)
     local propForward, propRight, propUp, propCoords = GetEntityMatrix(prop)
     local baseCoords = propCoords + vector3(0, 0, 0.1)
 
-    local propXAxisEnd = propCoords + propRight * AXIS_LENGTH
-    local propYAxisEnd = propCoords + propForward * AXIS_LENGTH
-    local propZAxisEnd = propCoords + propUp * AXIS_LENGTH
+    local axisLength = Config.objectOptions.axisLength
+    local propXAxisEnd = propCoords + propRight * axisLength
+    local propYAxisEnd = propCoords + propForward * axisLength
+    local propZAxisEnd = propCoords + propUp * axisLength
 
     DrawLine(baseCoords.x, baseCoords.y, baseCoords.z, propXAxisEnd.x, propXAxisEnd.y, propXAxisEnd.z, 255, 0, 0, 255)
     DrawLine(baseCoords.x, baseCoords.y, baseCoords.z, propYAxisEnd.x, propYAxisEnd.y, propYAxisEnd.z, 0, 255, 0, 255)
@@ -165,13 +153,14 @@ local function DrawPropAxes(prop)
 end
 
 local function RayCastGamePlayCamera(distance)
+    local rayDistance = distance or Config.objectOptions.raycastDistance
     local cameraRotation = GetGameplayCamRot()
     local cameraCoord = GetGameplayCamCoord()
     local direction = RotationToDirection(cameraRotation)
     local destination = cameraCoord + vector3(
-        direction.x * distance,
-        direction.y * distance,
-        direction.z * distance
+        direction.x * rayDistance,
+        direction.y * rayDistance,
+        direction.z * rayDistance
     )
     
     local _, hit, coords, _, entity = GetShapeTestResult(StartShapeTestRay(
@@ -184,21 +173,21 @@ end
 
 local function spawnProp(modelName, fromItemName)
     if type(modelName) ~= "string" then
-        notify("Model tidak valid.")
+        notify('notify.invalid_model', nil, 'error')
         return
     end
 
     lib.requestModel(modelName)
 
-    local hit, coords = RayCastGamePlayCamera(RAYCAST_DISTANCE)
+    local hit, coords = RayCastGamePlayCamera()
     while hit ~= 1 or not coords do
         Wait(0)
-        hit, coords = RayCastGamePlayCamera(RAYCAST_DISTANCE)
+        hit, coords = RayCastGamePlayCamera()
     end
 
-    local prop = CreateObject(modelName, coords.x, coords.y, coords.z + PROP_SPAWN_HEIGHT, true, false, true)
+    local prop = CreateObject(modelName, coords.x, coords.y, coords.z + Config.objectOptions.propSpawnHeight, true, false, true)
     if not prop or prop == 0 then
-        notify("Gagal membuat prop.")
+        notify('notify.create_failed', nil, 'error')
         SetModelAsNoLongerNeeded(modelName)
         return
     end
@@ -210,24 +199,31 @@ local function spawnProp(modelName, fromItemName)
     PlaceObjectOnGroundProperly(prop)
 
     local heading = 0.0
-    local lastCoords = coords
+    local lastCoords = vector3(coords.x, coords.y, coords.z)
     local lastHeading = heading
-    local groupName = CreateVarString(10, 'LITERAL_STRING', 'ROSESMILES PLACEBALES')
+    local groupName = CreateVarString(10, 'LITERAL_STRING', Lang:t('prompts.group'))
+    local lastRaycastTime = 0
+    local lastGroundSnapTime = GetGameTimer()
 
     while true do
         Wait(0)
 
-        hit, coords = RayCastGamePlayCamera(RAYCAST_DISTANCE)
-        if hit == 1 and coords then
-            local moved = not lastCoords
-                or math.abs(coords.x - lastCoords.x) > 0.001
-                or math.abs(coords.y - lastCoords.y) > 0.001
-                or math.abs(coords.z - lastCoords.z) > 0.001
-
-            if moved then
-                SetEntityCoordsNoOffset(prop, coords.x, coords.y, coords.z, false, false, false, true)
-                PlaceObjectOnGroundProperly(prop)
-                lastCoords = coords
+        local now = GetGameTimer()
+        if now - lastRaycastTime >= Config.objectOptions.raycastUpdateMs then
+            lastRaycastTime = now
+            hit, coords = RayCastGamePlayCamera()
+            if hit == 1 and coords then
+                local dx = coords.x - lastCoords.x
+                local dy = coords.y - lastCoords.y
+                local dz = coords.z - lastCoords.z
+                if math.abs(dx) > Config.objectOptions.movementThreshold or math.abs(dy) > Config.objectOptions.movementThreshold or math.abs(dz) > Config.objectOptions.movementThreshold then
+                    SetEntityCoordsNoOffset(prop, coords.x, coords.y, coords.z, false, false, false, true)
+                    if now - lastGroundSnapTime >= Config.objectOptions.groundSnapInterval then
+                        PlaceObjectOnGroundProperly(prop)
+                        lastGroundSnapTime = now
+                    end
+                    lastCoords = vector3(coords.x, coords.y, coords.z)
+                end
             end
         end
 
@@ -235,18 +231,18 @@ local function spawnProp(modelName, fromItemName)
         DrawPropAxes(prop)
 
         local rotationChanged = false
-        if IsControlPressed(1, CONTROL_HASH.ROTATE_LEFT) then
-            heading += 1.0
+        if IsControlPressed(1, Config.controlHash.ROTATE_LEFT) then
+            heading += Config.objectOptions.rotationStep
             rotationChanged = true
-        elseif IsControlPressed(1, CONTROL_HASH.ROTATE_RIGHT) then
-            heading -= 1.0
+        elseif IsControlPressed(1, Config.controlHash.ROTATE_RIGHT) then
+            heading -= Config.objectOptions.rotationStep
             rotationChanged = true
         end
 
-        if heading > 360.0 then
-            heading = 0.0
+        if heading >= 360.0 then
+            heading -= 360.0
         elseif heading < 0.0 then
-            heading = 360.0
+            heading += 360.0
         end
 
         if rotationChanged and heading ~= lastHeading then
@@ -275,7 +271,7 @@ local function spawnProp(modelName, fromItemName)
     TaskGoStraightToCoord(playerPed, propCoords.x, propCoords.y, propCoords.z, 1.0, -1, GetEntityHeading(playerPed), 0.0)
 
     local playerPosition = GetEntityCoords(playerPed)
-    while Vdist(playerPosition.x, playerPosition.y, playerPosition.z, propCoords.x, propCoords.y, propCoords.z) > MIN_DISTANCE_TO_PROP do
+    while Vdist(playerPosition.x, playerPosition.y, playerPosition.z, propCoords.x, propCoords.y, propCoords.z) > Config.objectOptions.minDistanceToProp do
         Wait(0)
         playerPosition = GetEntityCoords(playerPed)
     end
@@ -294,7 +290,7 @@ local function spawnProp(modelName, fromItemName)
     end
     TaskPlayAnim(playerPed, animDict, animName, 4.0, -4.0, -1, 1, 0.0, false, 0, false, 0, false)
 
-    Wait(ANIMATION_DURATION)
+    Wait(Config.objectOptions.animationDuration)
 
     FreezeEntityPosition(prop, true)
 
@@ -309,7 +305,7 @@ local function spawnProp(modelName, fromItemName)
 
     applyTargetToProp(prop)
     table.insert(spawnedProps, prop)
-    notify("Prop disimpan.")
+    notify('notify.prop_saved', nil, 'success')
 
     ClearPedTasks(playerPed)
     FreezeEntityPosition(playerPed, false)
@@ -331,19 +327,19 @@ RegisterNetEvent('tk_placeable:client:loadProp', function(modelName, pos, rot)
     FreezeEntityPosition(prop, true)
     applyTargetToProp(prop)
 
-    table.insert(spawnedProps, prop) -- Tambahkan ke array
+    table.insert(spawnedProps, prop)
 end)
 
 AddEventHandler('onResourceStop', function(resourceName)
     if resourceName ~= GetCurrentResourceName() then return end
-    print("[DEBUG] Resource berhenti. Menghapus semua prop...")
+    print(Lang:t('debug.resource_stopping'))
     for _, prop in ipairs(spawnedProps) do
         if DoesEntityExist(prop) then
             DeleteEntity(prop)
             DeleteObject(prop)
         end
     end
-    spawnedProps = {} -- Kosongkan array
+    spawnedProps = {}
 end)
 
 InitializePrompts()
