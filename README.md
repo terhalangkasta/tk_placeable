@@ -1,5 +1,5 @@
 # tk_placeable
-Requires rsg-core, ox_lib, oxmysql! Persistent ranch props synced across the server!
+Requires rsg-core, ox_lib, oxmysql! Persistent props synced across the server!
 
 # Features
 - Configurable placement controls: Prompt bindings, raycast range, rotation step, and snap timing.
