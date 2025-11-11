@@ -80,7 +80,7 @@ local function applyTargetToProp(propEntity)
 
                 local coords = GetEntityCoords(entity)
                 DeleteEntity(entity)
-                TriggerServerEvent('tk_placeable:deleteProp', modelName, {
+                TriggerServerEvent('tk_placeable:server:deleteProp', modelName, {
                     x = coords.x, y = coords.y, z = coords.z
                 })
 

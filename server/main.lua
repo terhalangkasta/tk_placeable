@@ -11,7 +11,7 @@ local function GetItemFromModel(modelName)
     return nil
 end
 
-RegisterNetEvent('tk_placeable:deleteProp', function(modelName, coords)
+RegisterNetEvent('tk_placeable:server:deleteProp', function(modelName, coords)
     local src = source
 
     if not coords or not coords.x then
