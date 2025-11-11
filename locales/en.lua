@@ -13,8 +13,9 @@ local Translations = {
     prompts = {
         cancel = 'Cancel',
         place = 'Place',
-        rotate_left = 'Rotate Left',
-        rotate_right = 'Rotate Right',
+        rotate = 'Rotate Left/Right',
+        move_horizontal = 'Move Left/Right',
+        move_vertical = 'Move Down/Up',
         group = 'TK PLACEABLES'
     },
     debug = {

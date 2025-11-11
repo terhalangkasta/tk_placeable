@@ -4,17 +4,25 @@ local PromptPlacerGroup = GetRandomIntInRange(0, 0xffffff)
 local Prompts = {
     cancel = nil,
     place = nil,
-    rotateLeft = nil,
-    rotateRight = nil
+    rotate = nil,
+    moveHorizontal = nil,
+    moveVertical = nil
 }
 
------------------------------
--- FUNCTIONS
------------------------------
-local function GetItemNameFromModel(model)
-    for _, prop in ipairs(Config.availableProps) do
-        if prop.model == model then
-            return prop.item
+local function NormalizeVector3(value)
+    if not value then
+        return nil
+    end
+    local valueType = type(value)
+    if valueType == "vector3" or valueType == "vector4" then
+        return { x = value.x, y = value.y, z = value.z }
+    end
+    if valueType == "table" then
+        if type(value.x) == "number" and type(value.y) == "number" and type(value.z) == "number" then
+            return { x = value.x, y = value.y, z = value.z }
+        end
+        if type(value[1]) == "number" and type(value[2]) == "number" and type(value[3]) == "number" then
+            return { x = value[1], y = value[2], z = value[3] }
         end
     end
     return nil
@@ -98,9 +106,14 @@ local function applyTargetToProp(propEntity)
     })
 end
 
-local function CreatePrompt(label, controlHash, holdMode)
+local function CreatePrompt(label, controlHashes, holdMode)
     local prompt = PromptRegisterBegin()
-    PromptSetControlAction(prompt, controlHash)
+    if type(controlHashes) ~= "table" then
+        controlHashes = { controlHashes }
+    end
+    for _, controlHash in ipairs(controlHashes) do
+        PromptSetControlAction(prompt, controlHash)
+    end
     local str = CreateVarString(10, 'LITERAL_STRING', label)
     PromptSetText(prompt, str)
     PromptSetEnabled(prompt, true)
@@ -120,22 +133,9 @@ end
 local function InitializePrompts()
     Prompts.cancel = CreatePrompt(Lang:t('prompts.cancel'), Config.controlHash.CANCEL, true)
     Prompts.place = CreatePrompt(Lang:t('prompts.place'), Config.controlHash.PLACE, true)
-    Prompts.rotateLeft = CreatePrompt(Lang:t('prompts.rotate_left'), Config.controlHash.ROTATE_LEFT, false)
-    Prompts.rotateRight = CreatePrompt(Lang:t('prompts.rotate_right'), Config.controlHash.ROTATE_RIGHT, false)
-end
-
-local function RotationToDirection(rotation)
-    local adjustedRotation = {
-        x = math.rad(rotation.x),
-        y = math.rad(rotation.y),
-        z = math.rad(rotation.z)
-    }
-    local direction = {
-        x = -math.sin(adjustedRotation.z) * math.abs(math.cos(adjustedRotation.x)),
-        y = math.cos(adjustedRotation.z) * math.abs(math.cos(adjustedRotation.x)),
-        z = math.sin(adjustedRotation.x)
-    }
-    return direction
+    Prompts.rotate = CreatePrompt(Lang:t('prompts.rotate'), { Config.controlHash.ROTATE_LEFT, Config.controlHash.ROTATE_RIGHT }, false)
+    Prompts.moveHorizontal = CreatePrompt(Lang:t('prompts.move_horizontal'), { Config.controlHash.MOVE_LEFT, Config.controlHash.MOVE_RIGHT }, false)
+    Prompts.moveVertical = CreatePrompt(Lang:t('prompts.move_vertical'), { Config.controlHash.MOVE_DOWN, Config.controlHash.MOVE_UP }, false)
 end
 
 local function DrawPropAxes(prop)
@@ -152,26 +152,7 @@ local function DrawPropAxes(prop)
     DrawLine(baseCoords.x, baseCoords.y, baseCoords.z, propZAxisEnd.x, propZAxisEnd.y, propZAxisEnd.z, 0, 0, 255, 255)
 end
 
-local function RayCastGamePlayCamera(distance)
-    local rayDistance = distance or Config.objectOptions.raycastDistance
-    local cameraRotation = GetGameplayCamRot()
-    local cameraCoord = GetGameplayCamCoord()
-    local direction = RotationToDirection(cameraRotation)
-    local destination = cameraCoord + vector3(
-        direction.x * rayDistance,
-        direction.y * rayDistance,
-        direction.z * rayDistance
-    )
-    
-    local _, hit, coords, _, entity = GetShapeTestResult(StartShapeTestRay(
-        cameraCoord.x, cameraCoord.y, cameraCoord.z,
-        destination.x, destination.y, destination.z,
-        -1, PlayerPedId(), 0
-    ))
-    return hit, coords, entity
-end
-
-local function spawnProp(modelName, fromItemName)
+local function spawnProp(modelName)
     if type(modelName) ~= "string" then
         Notify('notify.invalid_model', nil, 'error')
         return
@@ -179,13 +160,17 @@ local function spawnProp(modelName, fromItemName)
 
     lib.requestModel(modelName)
 
-    local hit, coords = RayCastGamePlayCamera()
-    while hit ~= 1 or not coords do
-        Wait(0)
-        hit, coords = RayCastGamePlayCamera()
-    end
+    local playerPed = PlayerPedId()
+    local playerCoords = GetEntityCoords(playerPed)
+    local forward = GetEntityForwardVector(playerPed)
+    local placementDistance = Config.objectOptions.defaultPlacementDistance
+    local baseCoords = vector3(
+        playerCoords.x + forward.x * placementDistance,
+        playerCoords.y + forward.y * placementDistance,
+        playerCoords.z + forward.z * placementDistance
+    )
 
-    local prop = CreateObject(modelName, coords.x, coords.y, coords.z + Config.objectOptions.propSpawnHeight, true, false, true)
+    local prop = CreateObject(modelName, baseCoords.x, baseCoords.y, baseCoords.z + Config.objectOptions.propSpawnHeight, true, false, true)
     if not prop or prop == 0 then
         Notify('notify.create_failed', nil, 'error')
         SetModelAsNoLongerNeeded(modelName)
@@ -195,40 +180,45 @@ local function spawnProp(modelName, fromItemName)
     FreezeEntityPosition(prop, true)
     SetEntityAlpha(prop, 180, false)
     SetEntityCollision(prop, false, false)
-    SetEntityCoordsNoOffset(prop, coords.x, coords.y, coords.z, false, false, false, true)
+    SetEntityCoordsNoOffset(prop, baseCoords.x, baseCoords.y, baseCoords.z, false, false, false, true)
     PlaceObjectOnGroundProperly(prop)
 
-    local heading = 0.0
-    local lastCoords = vector3(coords.x, coords.y, coords.z)
+    local heading = GetEntityHeading(playerPed)
     local lastHeading = heading
+    SetEntityHeading(prop, heading)
     local groupName = CreateVarString(10, 'LITERAL_STRING', Lang:t('prompts.group'))
-    local lastRaycastTime = 0
-    local lastGroundSnapTime = GetGameTimer()
-
+    local moveStep = Config.objectOptions.translationStep
+    local verticalStep = Config.objectOptions.verticalStep or moveStep
     while true do
         Wait(0)
 
-        local now = GetGameTimer()
-        if now - lastRaycastTime >= Config.objectOptions.raycastUpdateMs then
-            lastRaycastTime = now
-            hit, coords = RayCastGamePlayCamera()
-            if hit == 1 and coords then
-                local dx = coords.x - lastCoords.x
-                local dy = coords.y - lastCoords.y
-                local dz = coords.z - lastCoords.z
-                if math.abs(dx) > Config.objectOptions.movementThreshold or math.abs(dy) > Config.objectOptions.movementThreshold or math.abs(dz) > Config.objectOptions.movementThreshold then
-                    SetEntityCoordsNoOffset(prop, coords.x, coords.y, coords.z, false, false, false, true)
-                    if now - lastGroundSnapTime >= Config.objectOptions.groundSnapInterval then
-                        PlaceObjectOnGroundProperly(prop)
-                        lastGroundSnapTime = now
-                    end
-                    lastCoords = vector3(coords.x, coords.y, coords.z)
-                end
-            end
-        end
-
         PromptSetActiveGroupThisFrame(PromptPlacerGroup, groupName)
         DrawPropAxes(prop)
+
+        local moveVector = vector3(0.0, 0.0, 0.0)
+        local _, propRight = GetEntityMatrix(prop)
+
+        if propRight and IsControlPressed(1, Config.controlHash.MOVE_LEFT) then
+            moveVector = moveVector - (propRight * moveStep)
+        end
+
+        if propRight and IsControlPressed(1, Config.controlHash.MOVE_RIGHT) then
+            moveVector = moveVector + (propRight * moveStep)
+        end
+
+        if IsControlPressed(1, Config.controlHash.MOVE_UP) then
+            moveVector = moveVector + vector3(0.0, 0.0, verticalStep)
+        end
+
+        if IsControlPressed(1, Config.controlHash.MOVE_DOWN) then
+            moveVector = moveVector - vector3(0.0, 0.0, verticalStep)
+        end
+
+        if moveVector.x ~= 0.0 or moveVector.y ~= 0.0 or moveVector.z ~= 0.0 then
+            local propCoords = GetEntityCoords(prop)
+            local targetCoords = propCoords + moveVector
+            SetEntityCoordsNoOffset(prop, targetCoords.x, targetCoords.y, targetCoords.z, false, false, false, true)
+        end
 
         local rotationChanged = false
         if IsControlPressed(1, Config.controlHash.ROTATE_LEFT) then
@@ -294,14 +284,17 @@ local function spawnProp(modelName, fromItemName)
 
     FreezeEntityPosition(prop, true)
 
-    local savedCoords = GetEntityCoords(prop)
-    local rot = GetEntityRotation(prop, 2)
+    local savedCoords = NormalizeVector3(GetEntityCoords(prop))
+    local rot = NormalizeVector3(GetEntityRotation(prop, 2))
+
+    if not savedCoords or not rot then
+        DeleteEntity(prop)
+        FreezeEntityPosition(playerPed, false)
+        SetModelAsNoLongerNeeded(modelName)
+        return
+    end
 
     TriggerServerEvent('tk_placeable:server:saveProp', modelName, savedCoords, rot)
-
-    if fromItemName then
-        TriggerServerEvent('tk_placeable:server:consumeItem', fromItemName)
-    end
 
     applyTargetToProp(prop)
     table.insert(spawnedProps, prop)
@@ -312,11 +305,8 @@ local function spawnProp(modelName, fromItemName)
     SetModelAsNoLongerNeeded(modelName)
 end
 
------------------------------
--- EVENTS
------------------------------
 RegisterNetEvent("tk_placeable:client:placeSingleProp", function(modelName)
-    spawnProp(modelName, GetItemNameFromModel(modelName))
+    spawnProp(modelName)
 end)
 
 RegisterNetEvent('tk_placeable:client:loadProp', function(modelName, pos, rot)

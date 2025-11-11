@@ -1,39 +1,122 @@
 local RSGCore = exports['rsg-core']:GetCoreObject()
 local propsCache = {}
 local propsLoaded = false
+local actionCooldowns = {}
 
-local function GetItemFromModel(modelName)
+local function GetPropConfig(modelName)
     for _, prop in ipairs(Config.availableProps) do
         if prop.model == modelName then
-            return prop.item
+            return prop
         end
     end
     return nil
 end
 
+local function GetItemFromModel(modelName)
+    local prop = GetPropConfig(modelName)
+    if prop then
+        return prop.item
+    end
+    return nil
+end
+
+local function IsValidVector3(value)
+    return type(value) == 'table'
+        and type(value.x) == 'number'
+        and type(value.y) == 'number'
+        and type(value.z) == 'number'
+end
+
+local function CalculateDistanceSquared(a, b)
+    local dx = a.x - b.x
+    local dy = a.y - b.y
+    local dz = a.z - b.z
+    return (dx * dx) + (dy * dy) + (dz * dz)
+end
+
+local function GetPlayerCoords(src)
+    local ped = GetPlayerPed(src)
+    if not ped or ped == 0 or not DoesEntityExist(ped) then
+        return nil
+    end
+    local coords = GetEntityCoords(ped)
+    return { x = coords.x, y = coords.y, z = coords.z }
+end
+
+local function IsRateLimited(src, action, cooldownMs)
+    cooldownMs = cooldownMs or 1500
+    local now = GetGameTimer()
+    actionCooldowns[src] = actionCooldowns[src] or {}
+    local lastTime = actionCooldowns[src][action] or 0
+    if now - lastTime < cooldownMs then
+        return true
+    end
+    actionCooldowns[src][action] = now
+    return false
+end
+
 RegisterNetEvent('tk_placeable:server:deleteProp', function(modelName, coords)
     local src = source
 
-    if not coords or not coords.x then
+    if type(modelName) ~= 'string' then
+        print('[tk_placeable] Invalid model from source ' .. tostring(src))
+        return
+    end
+
+    local propConfig = GetPropConfig(modelName)
+    if not propConfig then
+        print('[tk_placeable] Unknown model ' .. modelName)
+        return
+    end
+
+    if not IsValidVector3(coords) then
         print(Lang:t('logs.invalid_coords', { coords = json.encode(coords) }))
         return
     end
 
+    if IsRateLimited(src, 'delete') then
+        print('[tk_placeable] Delete rate limit for ' .. tostring(src))
+        return
+    end
+
+    local playerCoords = GetPlayerCoords(src)
+    if not playerCoords then
+        return
+    end
+
+    local minDistance = Config.objectOptions.minDistanceToProp or 1.0
+    local playerToProvidedSq = CalculateDistanceSquared(playerCoords, coords)
+    if playerToProvidedSq > ((minDistance + 2.0) * (minDistance + 2.0)) then
+        return
+    end
+
     MySQL.query('SELECT id, position FROM tk_placeable WHERE model = ?', { modelName }, function(results)
+        if not results then
+            return
+        end
+
+        local minDistanceSq = minDistance * minDistance
+        local allowedPlayerDistanceSq = (minDistance + 1.0) * (minDistance + 1.0)
+
         for _, row in ipairs(results) do
-            local pos = json.decode(row.position)
+            local storedPosition = json.decode(row.position)
+            if IsValidVector3(storedPosition) then
+                local distToProvidedSq = CalculateDistanceSquared(coords, storedPosition)
+                local distToPlayerSq = CalculateDistanceSquared(playerCoords, storedPosition)
 
-            if pos then
-                local dx = coords.x - pos.x
-                local dy = coords.y - pos.y
-                local dz = coords.z - pos.z
-                local dist = math.sqrt(dx * dx + dy * dy + dz * dz)
-
-                if dist < Config.objectOptions.minDistanceToProp then
+                if distToProvidedSq <= minDistanceSq and distToPlayerSq <= allowedPlayerDistanceSq then
                     MySQL.execute('DELETE FROM tk_placeable WHERE id = ?', { row.id })
-                    print(Lang:t('logs.db_deleted', { model = modelName, coords = ('%.2f, %.2f, %.2f'):format(pos.x, pos.y, pos.z) }))
+                    print(Lang:t('logs.db_deleted', { model = modelName, coords = ('%.2f, %.2f, %.2f'):format(storedPosition.x, storedPosition.y, storedPosition.z) }))
 
-                    local itemName = GetItemFromModel(modelName)
+                    for i = #propsCache, 1, -1 do
+                        local cached = propsCache[i]
+                        if cached.id == row.id then
+                            table.remove(propsCache, i)
+                            break
+                        end
+                    end
+
+                    local itemName = propConfig.item
                     if itemName then
                         local Player = RSGCore.Functions.GetPlayer(src)
                         if Player then
@@ -41,21 +124,14 @@ RegisterNetEvent('tk_placeable:server:deleteProp', function(modelName, coords)
                             TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[itemName], "add")
                         end
                     end
-                    break
+                    return
                 end
             end
         end
     end)
 end)
 
-RegisterNetEvent('tk_placeable:server:consumeItem', function(itemName)
-    local src = source
-    local Player = RSGCore.Functions.GetPlayer(src)
-    if Player and itemName then
-        Player.Functions.RemoveItem(itemName, 1)
-        TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[itemName], "remove")
-    end
-end)
+RegisterNetEvent('tk_placeable:server:consumeItem', function() end)
 
 for _, prop in pairs(Config.availableProps) do
     RSGCore.Functions.CreateUseableItem(prop.item, function(source, item)
@@ -64,11 +140,80 @@ for _, prop in pairs(Config.availableProps) do
 end
 
 RegisterNetEvent('tk_placeable:server:saveProp', function(modelName, coords, rot)
+    local src = source
+
+    if type(modelName) ~= 'string' then
+        return
+    end
+
+    if IsRateLimited(src, 'save') then
+        print('[tk_placeable] Save rate limit for ' .. tostring(src))
+        return
+    end
+
+    local propConfig = GetPropConfig(modelName)
+    if not propConfig then
+        print('[tk_placeable] Unknown model ' .. modelName)
+        return
+    end
+
+    if not IsValidVector3(coords) then
+        print(Lang:t('logs.invalid_coords', { coords = json.encode(coords) }))
+        return
+    end
+
+    if not IsValidVector3(rot) then
+        print('[tk_placeable] Invalid rotation from source ' .. tostring(src))
+        return
+    end
+
+    local Player = RSGCore.Functions.GetPlayer(src)
+    if not Player then
+        return
+    end
+
+    local itemName = propConfig.item
+    if not itemName then
+        return
+    end
+
+    local item = Player.Functions.GetItemByName(itemName)
+    if not item or item.amount < 1 then
+        print('[tk_placeable] Missing item ' .. itemName .. ' for player ' .. tostring(src))
+        return
+    end
+
     local posData = json.encode({ x = coords.x, y = coords.y, z = coords.z })
     local rotData = json.encode({ x = rot.x, y = rot.y, z = rot.z })
 
-    MySQL.insert('INSERT INTO tk_placeable (model, position, rotation) VALUES (?, ?, ?)', {
-        modelName, posData, rotData
+    Player.Functions.RemoveItem(itemName, 1)
+    TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[itemName], "remove")
+
+    local insertId
+    local success, errorMsg = pcall(function()
+        if MySQL.insert and MySQL.insert.await then
+            insertId = MySQL.insert.await('INSERT INTO tk_placeable (model, position, rotation) VALUES (?, ?, ?)', {
+                modelName, posData, rotData
+            })
+        else
+            insertId = MySQL.insert('INSERT INTO tk_placeable (model, position, rotation) VALUES (?, ?, ?)', {
+                modelName, posData, rotData
+            })
+        end
+    end)
+
+    if not success or not insertId or insertId == 0 then
+        Player.Functions.AddItem(itemName, 1)
+        TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[itemName], "add")
+        print('[tk_placeable] Failed to save prop for player ' .. tostring(src) .. ': ' .. tostring(errorMsg or insertId))
+        return
+    end
+
+    table.insert(propsCache, {
+        id = insertId,
+        model = modelName,
+        position = posData,
+        rotation = rotData
     })
 end)
 

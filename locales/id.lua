@@ -13,9 +13,11 @@ local Translations = {
     prompts = {
         cancel = 'Batal',
         place = 'Pasang',
-        rotate_left = 'Putar Kiri',
-        rotate_right = 'Putar Kanan',
-        group = 'TK PLACEABLES'
+        rotate = 'Putar Kiri/Kanan',
+        move_horizontal = 'Geser Kiri/Kanan',
+        move_vertical = 'Geser Bawah/Atas',
+        group = 'TK PLACEABLES',
+        interaction_text = 'Interaksi   \nWaktu tersisa: %{minutes}:%{seconds}'
     },
     debug = {
         no_prop_match = 'Tidak ada prop yang cocok untuk hash: %{hash}',

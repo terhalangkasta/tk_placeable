@@ -4,19 +4,22 @@ Config.controlHash = {
     ROTATE_LEFT = 0xA65EBAB4,
     ROTATE_RIGHT = 0xDEB34313,
     PLACE = 0xC7B5340A,
-    CANCEL = 0xF84FA74F
+    CANCEL = 0xF84FA74F,
+    MOVE_LEFT = 0x7065027D,
+    MOVE_RIGHT = 0xB4E465B4,
+    MOVE_UP = 0x446258B6,
+    MOVE_DOWN = 0x3C3DD371
 }
 
 Config.objectOptions = {
     axisLength = 0.20,
-    raycastDistance = 1000.0,
     propSpawnHeight = 2.0,
     animationDuration = 2000,
     minDistanceToProp = 1.2,
     rotationStep = 1.0,
-    movementThreshold = 0.005,
-    raycastUpdateMs = 75,
-    groundSnapInterval = 150
+    translationStep = 0.05,
+    verticalStep = 0.05,
+    defaultPlacementDistance = 2.0
 }
 
 ---------------------------------
