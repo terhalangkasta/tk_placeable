@@ -20,7 +20,7 @@ local function GetItemNameFromModel(model)
     return nil
 end
 
-local function notify(key, subs, notifType)
+local function Notify(key, subs, notifType)
     lib.notify({
         title = Lang:t('notify.title'),
         description = Lang:t(key, subs),
@@ -91,7 +91,7 @@ local function applyTargetToProp(propEntity)
                     end
                 end
 
-                notify('notify.prop_removed', nil, 'success')
+                Notify('notify.prop_removed', nil, 'success')
                 print(string.format("[INFO] Deleted prop '%s' at coords %s", modelName, coords))
             end
         }
@@ -173,7 +173,7 @@ end
 
 local function spawnProp(modelName, fromItemName)
     if type(modelName) ~= "string" then
-        notify('notify.invalid_model', nil, 'error')
+        Notify('notify.invalid_model', nil, 'error')
         return
     end
 
@@ -187,7 +187,7 @@ local function spawnProp(modelName, fromItemName)
 
     local prop = CreateObject(modelName, coords.x, coords.y, coords.z + Config.objectOptions.propSpawnHeight, true, false, true)
     if not prop or prop == 0 then
-        notify('notify.create_failed', nil, 'error')
+        Notify('notify.create_failed', nil, 'error')
         SetModelAsNoLongerNeeded(modelName)
         return
     end
@@ -305,7 +305,7 @@ local function spawnProp(modelName, fromItemName)
 
     applyTargetToProp(prop)
     table.insert(spawnedProps, prop)
-    notify('notify.prop_saved', nil, 'success')
+    Notify('notify.prop_saved', nil, 'success')
 
     ClearPedTasks(playerPed)
     FreezeEntityPosition(playerPed, false)
