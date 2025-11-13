@@ -310,12 +310,25 @@ RegisterNetEvent("tk_placeable:client:placeSingleProp", function(modelName)
 end)
 
 RegisterNetEvent('tk_placeable:client:loadProp', function(modelName, pos, rot)
+    local savedCoords = NormalizeVector3(pos)
+    if not savedCoords then
+        return
+    end
+
+    local savedRotation = NormalizeVector3(rot)
+    if not savedRotation then
+        savedRotation = { x = 0.0, y = 0.0, z = 0.0 }
+    end
+
     lib.requestModel(modelName)
-    local prop = CreateObject(GetHashKey(modelName), pos.x, pos.y, pos.z, false, false, false, false, true)
-    SetEntityRotation(prop, rot.x, rot.y, rot.z, 2, true)
-    PlaceObjectOnGroundProperly(prop)
+
+    local prop = CreateObject(GetHashKey(modelName), savedCoords.x, savedCoords.y, savedCoords.z, false, false, false, false, true)
+    SetEntityCoordsNoOffset(prop, savedCoords.x, savedCoords.y, savedCoords.z, false, false, false, true)
+    SetEntityRotation(prop, savedRotation.x, savedRotation.y, savedRotation.z, 2, true)
+    SetEntityCollision(prop, true, true)
     FreezeEntityPosition(prop, true)
     applyTargetToProp(prop)
+    SetModelAsNoLongerNeeded(modelName)
 
     table.insert(spawnedProps, prop)
 end)
