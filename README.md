@@ -3,6 +3,7 @@ Requires rsg-core, ox_lib, oxmysql! Persistent props synced across the server!
 
 # Features
 - Configurable placement controls: Prompt bindings, raycast range, rotation step, and snap timing.
+- Depth adjustment prompts: Bring Forward and Send Backward options for fine z-order control during placement.
 - Item-gated props: Useable inventory items spawn matching models and refund on pickup.
 - Database persistence: Props saved, reloaded on start, and streamed to joining players.
 - Target integration: ox_target pickup prompt with dynamic labels.

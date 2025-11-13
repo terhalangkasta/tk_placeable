@@ -6,6 +6,7 @@ local Prompts = {
     place = nil,
     rotate = nil,
     moveHorizontal = nil,
+    moveDepth = nil,
     moveVertical = nil
 }
 
@@ -135,6 +136,7 @@ local function InitializePrompts()
     Prompts.place = CreatePrompt(Lang:t('prompts.place'), Config.controlHash.PLACE, true)
     Prompts.rotate = CreatePrompt(Lang:t('prompts.rotate'), { Config.controlHash.ROTATE_LEFT, Config.controlHash.ROTATE_RIGHT }, false)
     Prompts.moveHorizontal = CreatePrompt(Lang:t('prompts.move_horizontal'), { Config.controlHash.MOVE_LEFT, Config.controlHash.MOVE_RIGHT }, false)
+    Prompts.moveDepth = CreatePrompt(Lang:t('prompts.move_depth'), { Config.controlHash.BRING_FORWARD, Config.controlHash.SEND_BACKWARD }, false)
     Prompts.moveVertical = CreatePrompt(Lang:t('prompts.move_vertical'), { Config.controlHash.MOVE_DOWN, Config.controlHash.MOVE_UP }, false)
 end
 
@@ -196,7 +198,7 @@ local function spawnProp(modelName)
         DrawPropAxes(prop)
 
         local moveVector = vector3(0.0, 0.0, 0.0)
-        local _, propRight = GetEntityMatrix(prop)
+        local propForward, propRight = GetEntityMatrix(prop)
 
         if propRight and IsControlPressed(1, Config.controlHash.MOVE_LEFT) then
             moveVector = moveVector - (propRight * moveStep)
@@ -204,6 +206,14 @@ local function spawnProp(modelName)
 
         if propRight and IsControlPressed(1, Config.controlHash.MOVE_RIGHT) then
             moveVector = moveVector + (propRight * moveStep)
+        end
+
+        if propForward and IsControlPressed(1, Config.controlHash.BRING_FORWARD) then
+            moveVector = moveVector + (propForward * moveStep)
+        end
+
+        if propForward and IsControlPressed(1, Config.controlHash.SEND_BACKWARD) then
+            moveVector = moveVector - (propForward * moveStep)
         end
 
         if IsControlPressed(1, Config.controlHash.MOVE_UP) then

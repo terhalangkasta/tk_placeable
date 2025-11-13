@@ -15,6 +15,7 @@ local Translations = {
         place = 'Pasang',
         rotate = 'Putar Kiri/Kanan',
         move_horizontal = 'Geser Kiri/Kanan',
+        move_depth = 'Majukan/Mundurkan',
         move_vertical = 'Geser Bawah/Atas',
         group = 'TK PLACEABLES',
         interaction_text = 'Interaksi   \nWaktu tersisa: %{minutes}:%{seconds}'

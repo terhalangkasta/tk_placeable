@@ -15,6 +15,7 @@ local Translations = {
         place = 'Place',
         rotate = 'Rotate Left/Right',
         move_horizontal = 'Move Left/Right',
+        move_depth = 'Bring Forward/Send Backward',
         move_vertical = 'Move Down/Up',
         group = 'TK PLACEABLES'
     },

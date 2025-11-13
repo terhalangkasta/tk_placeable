@@ -8,7 +8,9 @@ Config.controlHash = {
     MOVE_LEFT = 0xA65EBAB4,
     MOVE_RIGHT = 0xDEB34313,
     MOVE_UP = 0x6319DB71,
-    MOVE_DOWN = 0x05CA7C52
+    MOVE_DOWN = 0x05CA7C52,
+    BRING_FORWARD = 0x4AF4D473,
+    SEND_BACKWARD = 0x3C3DD371
 }
 
 Config.objectOptions = {
