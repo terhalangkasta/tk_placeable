@@ -267,16 +267,20 @@ local function spawnProp(modelName)
 
     local playerPed = PlayerPedId()
     local propCoords = GetEntityCoords(prop)
+    local minDistance = Config.objectOptions.minDistanceToProp
+    local approachTimeout = Config.objectOptions.approachTimeout or 5000
 
     TaskGoStraightToCoord(playerPed, propCoords.x, propCoords.y, propCoords.z, 1.0, -1, GetEntityHeading(playerPed), 0.0)
 
+    local timeout = GetGameTimer() + approachTimeout
     local playerPosition = GetEntityCoords(playerPed)
-    while Vdist(playerPosition.x, playerPosition.y, playerPosition.z, propCoords.x, propCoords.y, propCoords.z) > Config.objectOptions.minDistanceToProp do
+    while #(propCoords - playerPosition) > minDistance and GetGameTimer() < timeout do
         Wait(0)
         playerPosition = GetEntityCoords(playerPed)
     end
 
     ClearPedTasksImmediately(playerPed)
+
     FreezeEntityPosition(playerPed, true)
 
     local headingToProp = GetHeadingFromVector_2d(propCoords.x - playerPosition.x, propCoords.y - playerPosition.y)
