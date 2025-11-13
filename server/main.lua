@@ -12,14 +12,6 @@ local function GetPropConfig(modelName)
     return nil
 end
 
-local function GetItemFromModel(modelName)
-    local prop = GetPropConfig(modelName)
-    if prop then
-        return prop.item
-    end
-    return nil
-end
-
 local function IsValidVector3(value)
     return type(value) == 'table'
         and type(value.x) == 'number'

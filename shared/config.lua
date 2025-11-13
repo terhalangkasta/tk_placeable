@@ -24,9 +24,6 @@ Config.objectOptions = {
     defaultPlacementDistance = 2.0
 }
 
----------------------------------
--- PROPS
----------------------------------
 Config.availableProps = {
     { label = "Fence",           model = "val_fencepen01_ax",               item = "fence_prop_1" },
     { label = "Fence 2",         model = "val_fencepen01_bx",               item = "fence_prop_2" },
