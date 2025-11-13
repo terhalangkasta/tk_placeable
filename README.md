@@ -14,5 +14,5 @@ Requires rsg-core, ox_lib, oxmysql! Persistent props synced across the server!
 # Commands
 - loadprops: Reload all stored props from the database.
 
-# Discord
+# Support
 - [TK Scripts](https://discord.gg/Xj5YYPsWej)
