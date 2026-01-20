@@ -3,6 +3,25 @@ local propsCache = {}
 local propsLoaded = false
 local actionCooldowns = {}
 
+-- Performance optimization settings
+local PerformanceMode = {
+    enabled = false,
+    playerThreshold = 100,
+    checkInterval = 15 * 60 * 1000, -- Check every 15 minutes
+    batchQueryLimit = 100,
+    rateLimitMultiplier = 1.5,
+    syncInterval = 2000
+}
+
+local function GetPlayerCount()
+    return #GetPlayers()
+end
+
+local function UpdatePerformanceMode()
+    local playerCount = GetPlayerCount()
+    PerformanceMode.enabled = playerCount > PerformanceMode.playerThreshold
+end
+
 local function GetPropConfig(modelName)
     for _, prop in ipairs(Config.availableProps) do
         if prop.model == modelName then
@@ -37,6 +56,12 @@ end
 
 local function IsRateLimited(src, action, cooldownMs)
     cooldownMs = cooldownMs or 1500
+    
+    -- Increase cooldown in performance mode
+    if PerformanceMode.enabled then
+        cooldownMs = math.ceil(cooldownMs * PerformanceMode.rateLimitMultiplier)
+    end
+    
     local now = GetGameTimer()
     actionCooldowns[src] = actionCooldowns[src] or {}
     local lastTime = actionCooldowns[src][action] or 0
@@ -82,45 +107,101 @@ RegisterNetEvent('tk_placeable:server:deleteProp', function(modelName, coords)
         return
     end
 
-    MySQL.query('SELECT id, position FROM tk_placeable WHERE model = ?', { modelName }, function(results)
-        if not results then
-            return
-        end
-
-        local minDistanceSq = minDistance * minDistance
-        local allowedPlayerDistanceSq = (minDistance + 1.0) * (minDistance + 1.0)
-
-        for _, row in ipairs(results) do
-            local storedPosition = json.decode(row.position)
-            if IsValidVector3(storedPosition) then
-                local distToProvidedSq = CalculateDistanceSquared(coords, storedPosition)
-                local distToPlayerSq = CalculateDistanceSquared(playerCoords, storedPosition)
-
-                if distToProvidedSq <= minDistanceSq and distToPlayerSq <= allowedPlayerDistanceSq then
-                    MySQL.execute('DELETE FROM tk_placeable WHERE id = ?', { row.id })
-                    print(Lang:t('logs.db_deleted', { model = modelName, coords = ('%.2f, %.2f, %.2f'):format(storedPosition.x, storedPosition.y, storedPosition.z) }))
-
-                    for i = #propsCache, 1, -1 do
-                        local cached = propsCache[i]
-                        if cached.id == row.id then
-                            table.remove(propsCache, i)
-                            break
-                        end
-                    end
-
-                    local itemName = propConfig.item
-                    if itemName then
-                        local Player = RSGCore.Functions.GetPlayer(src)
-                        if Player then
-                            Player.Functions.AddItem(itemName, 1)
-                            TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[itemName], "add")
-                        end
-                    end
+    -- Use async processing with smaller batches in performance mode
+    local function processDelete()
+        local query = 'SELECT id, position FROM tk_placeable WHERE model = ?'
+        
+        if PerformanceMode.enabled then
+            MySQL.query(query, { modelName }, function(results)
+                if not results or #results == 0 then
                     return
                 end
-            end
+
+                local minDistanceSq = minDistance * minDistance
+                local allowedPlayerDistanceSq = (minDistance + 1.0) * (minDistance + 1.0)
+                local processed = 0
+                local maxBatch = PerformanceMode.batchQueryLimit
+
+                for _, row in ipairs(results) do
+                    if processed >= maxBatch then
+                        break
+                    end
+                    
+                    local storedPosition = json.decode(row.position)
+                    if IsValidVector3(storedPosition) then
+                        local distToProvidedSq = CalculateDistanceSquared(coords, storedPosition)
+                        local distToPlayerSq = CalculateDistanceSquared(playerCoords, storedPosition)
+
+                        if distToProvidedSq <= minDistanceSq and distToPlayerSq <= allowedPlayerDistanceSq then
+                            MySQL.execute('DELETE FROM tk_placeable WHERE id = ?', { row.id })
+                            print(Lang:t('logs.db_deleted', { model = modelName, coords = ('%.2f, %.2f, %.2f'):format(storedPosition.x, storedPosition.y, storedPosition.z) }))
+
+                            for i = #propsCache, 1, -1 do
+                                local cached = propsCache[i]
+                                if cached.id == row.id then
+                                    table.remove(propsCache, i)
+                                    break
+                                end
+                            end
+
+                            local itemName = propConfig.item
+                            if itemName then
+                                local Player = RSGCore.Functions.GetPlayer(src)
+                                if Player then
+                                    Player.Functions.AddItem(itemName, 1)
+                                    TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[itemName], "add")
+                                end
+                            end
+                            processed = processed + 1
+                        end
+                    end
+                end
+            end)
+        else
+            -- Original logic for normal mode
+            MySQL.query(query, { modelName }, function(results)
+                if not results then
+                    return
+                end
+
+                local minDistanceSq = minDistance * minDistance
+                local allowedPlayerDistanceSq = (minDistance + 1.0) * (minDistance + 1.0)
+
+                for _, row in ipairs(results) do
+                    local storedPosition = json.decode(row.position)
+                    if IsValidVector3(storedPosition) then
+                        local distToProvidedSq = CalculateDistanceSquared(coords, storedPosition)
+                        local distToPlayerSq = CalculateDistanceSquared(playerCoords, storedPosition)
+
+                        if distToProvidedSq <= minDistanceSq and distToPlayerSq <= allowedPlayerDistanceSq then
+                            MySQL.execute('DELETE FROM tk_placeable WHERE id = ?', { row.id })
+                            print(Lang:t('logs.db_deleted', { model = modelName, coords = ('%.2f, %.2f, %.2f'):format(storedPosition.x, storedPosition.y, storedPosition.z) }))
+
+                            for i = #propsCache, 1, -1 do
+                                local cached = propsCache[i]
+                                if cached.id == row.id then
+                                    table.remove(propsCache, i)
+                                    break
+                                end
+                            end
+
+                            local itemName = propConfig.item
+                            if itemName then
+                                local Player = RSGCore.Functions.GetPlayer(src)
+                                if Player then
+                                    Player.Functions.AddItem(itemName, 1)
+                                    TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[itemName], "add")
+                                end
+                            end
+                            return
+                        end
+                    end
+                end
+            end)
         end
-    end)
+    end
+
+    processDelete()
 end)
 
 RegisterNetEvent('tk_placeable:server:consumeItem', function() end)
@@ -255,16 +336,52 @@ RegisterCommand('loadprops', function(source, args, raw)
     end
 end, false)
 
+-- Performance monitoring and mode update
+local lastPerformanceCheck = 0
+Citizen.CreateThread(function()
+    while true do
+        Wait(PerformanceMode.checkInterval)
+        UpdatePerformanceMode()
+        if GetGameTimer() - lastPerformanceCheck > PerformanceMode.checkInterval then
+            local playerCount = GetPlayerCount()
+            local mode = PerformanceMode.enabled and "ENABLED" or "DISABLED"
+            print(string.format("[tk_placeable] Performance Mode: %s | Players: %d/%d", mode, playerCount, PerformanceMode.playerThreshold))
+            lastPerformanceCheck = GetGameTimer()
+        end
+    end
+end)
+
 RegisterNetEvent('RSGCore:Server:OnPlayerLoaded', function()
     if not propsLoaded or not propsCache then
         return
     end
     
     local playerId = source
-    for _, row in ipairs(propsCache) do
-        local modelName = row.model
-        local position = json.decode(row.position)
-        local rotation = json.decode(row.rotation)
-        TriggerClientEvent('tk_placeable:client:loadProp', playerId, modelName, position, rotation)
+    
+    -- In performance mode, send props in batches with delay
+    if PerformanceMode.enabled then
+        local totalProps = #propsCache
+        local batchSize = PerformanceMode.batchQueryLimit
+        local sentCount = 0
+        
+        for index, row in ipairs(propsCache) do
+            local modelName = row.model
+            local position = json.decode(row.position)
+            local rotation = json.decode(row.rotation)
+            TriggerClientEvent('tk_placeable:client:loadProp', playerId, modelName, position, rotation)
+            
+            sentCount = sentCount + 1
+            if sentCount % batchSize == 0 then
+                Wait(50) -- Small delay between batches to reduce spike
+            end
+        end
+    else
+        -- Original logic - send all at once
+        for _, row in ipairs(propsCache) do
+            local modelName = row.model
+            local position = json.decode(row.position)
+            local rotation = json.decode(row.rotation)
+            TriggerClientEvent('tk_placeable:client:loadProp', playerId, modelName, position, rotation)
+        end
     end
 end)

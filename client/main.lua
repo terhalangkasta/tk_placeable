@@ -1,6 +1,16 @@
 local spawnedProps = {}
 local PromptPlacerGroup = GetRandomIntInRange(0, 0xffffff)
 
+-- Performance optimization settings
+local PerformanceMode = {
+    enabled = false,
+    playerThreshold = 200,
+    checkInterval = 15 * 60 * 1000, -- Check every 15 minutes
+    maxPropsPerFrame = 10,
+    targetRenderDistance = 200.0,
+    renderRenderInterval = 500
+}
+
 local Prompts = {
     cancel = nil,
     place = nil,
@@ -9,6 +19,21 @@ local Prompts = {
     moveDepth = nil,
     moveVertical = nil
 }
+
+local function GetPlayerCount()
+    local count = 0
+    for _ = 1, 512 do
+        if NetworkIsPlayerActive(_) then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+local function UpdatePerformanceMode()
+    local playerCount = GetPlayerCount()
+    PerformanceMode.enabled = playerCount > PerformanceMode.playerThreshold
+end
 
 local function NormalizeVector3(value)
     if not value then
@@ -73,6 +98,17 @@ local function applyTargetToProp(propEntity)
     local modelHash = GetEntityModel(propEntity)
     local modelName = GetPropNameFromHash(modelHash)
     local labelName = GetLabelFromModel(modelName)
+
+    -- Skip target application in performance mode for distant props
+    if PerformanceMode.enabled then
+        local playerCoords = GetEntityCoords(PlayerPedId())
+        local propCoords = GetEntityCoords(propEntity)
+        local distance = #(playerCoords - propCoords)
+        
+        if distance > PerformanceMode.targetRenderDistance then
+            return
+        end
+    end
 
     exports.ox_target:addLocalEntity(propEntity, {
         {
@@ -345,6 +381,22 @@ RegisterNetEvent('tk_placeable:client:loadProp', function(modelName, pos, rot)
     SetModelAsNoLongerNeeded(modelName)
 
     table.insert(spawnedProps, prop)
+end)
+
+-- Performance monitoring thread
+Citizen.CreateThread(function()
+    local lastCheck = GetGameTimer()
+    while true do
+        Wait(PerformanceMode.checkInterval)
+        if GetGameTimer() - lastCheck > PerformanceMode.checkInterval then
+            UpdatePerformanceMode()
+            local playerCount = GetPlayerCount()
+            local mode = PerformanceMode.enabled and "ENABLED" or "DISABLED"
+            print(string.format("[tk_placeable-client] Performance Mode: %s | Players: %d/%d | Props Loaded: %d", 
+                mode, playerCount, PerformanceMode.playerThreshold, #spawnedProps))
+            lastCheck = GetGameTimer()
+        end
+    end
 end)
 
 AddEventHandler('onResourceStop', function(resourceName)
