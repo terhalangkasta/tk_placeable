@@ -7,7 +7,7 @@ local PerformanceMode = {
     playerThreshold = 200,
     checkInterval = 15 * 60 * 1000, -- Check every 15 minutes
     maxPropsPerFrame = 10,
-    targetRenderDistance = 200.0,
+    targetRenderDistance = 2.5,
     renderRenderInterval = 500
 }
 
@@ -115,6 +115,7 @@ local function applyTargetToProp(propEntity)
             name = "delete_prop",
             icon = "fas fa-trash",
             label = Lang:t('text.pickup', { label = labelName }),
+            distance = PerformanceMode.targetRenderDistance,
 
             onSelect = function(data)
                 local entity = data.entity
