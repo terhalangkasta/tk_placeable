@@ -27,7 +27,6 @@ local propsByModel = {}
 local propsLoaded = false
 ---@type table<integer, table<string, integer>>
 local actionCooldown = {}
-local perfMode = { enabled = false, last = nil }
 
 ---@type table<string, { label:string, model:string, item:string }>
 local propByModel = {}
@@ -145,9 +144,6 @@ end
 ---@return boolean limited
 local function isRateLimited(src, action)
     local cd = serverConfig.rateLimits[action] or 1500
-    if perfMode.enabled then
-        cd = math.ceil(cd * serverConfig.perfModeRateMultiplier)
-    end
     local bucket = actionCooldown[src]
     if not bucket then
         bucket = {}
@@ -196,8 +192,10 @@ end
 ---@param row { id:integer, model:string, position:string, rotation:string }
 ---@return PropEntry?
 local function decodeRow(row)
-    local pos = json.decode(row.position)
-    local rot = json.decode(row.rotation)
+    local okPos, pos = pcall(json.decode, row.position)
+    if not okPos then pos = nil end
+    local okRot, rot = pcall(json.decode, row.rotation)
+    if not okRot then rot = nil end
     if not (isValidVector3(pos) and isValidVector3(rot)) then return nil end
     local cfg = propByModel[row.model]
     if not cfg then return nil end
@@ -273,9 +271,17 @@ local function loadProps()
 
         propsLoaded = true
 
-        for _, entry in pairs(props) do
-            broadcastEntry(-1, entry)
-        end
+        local batchSize  = serverConfig.streamBatchSize
+        local batchDelay = serverConfig.streamBatchDelay
+
+        Citizen.CreateThread(function()
+            local sent = 0
+            for _, entry in pairs(props) do
+                broadcastEntry(-1, entry)
+                sent = sent + 1
+                if batchSize > 0 and sent % batchSize == 0 then Wait(batchDelay) end
+            end
+        end)
 
         print(locale('log_loaded_count', tableCount(props)))
         if skipped > 0 then
@@ -291,8 +297,8 @@ AddEventHandler('onResourceStart', function(resource)
         CREATE TABLE IF NOT EXISTS `tk_placeable` (
             `id`       INT NOT NULL AUTO_INCREMENT,
             `model`    VARCHAR(100) NOT NULL,
-            `position` LONGTEXT NOT NULL,
-            `rotation` LONGTEXT NOT NULL,
+            `position` JSON NOT NULL,
+            `rotation` JSON NOT NULL,
             PRIMARY KEY (`id`),
             INDEX `idx_model` (`model`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -445,23 +451,30 @@ RegisterNetEvent('RSGCore:Server:OnPlayerLoaded', function()
     if not propsLoaded then return end
     local src = source
 
+    local ped = GetPlayerPed(src)
+    if ped == 0 then return end
+    local ec = GetEntityCoords(ped)
+    local playerCoords = { x = ec.x, y = ec.y, z = ec.z }
+
+    local streamR2 = sharedConfig.radius.stream * sharedConfig.radius.stream
     local batchSize  = serverConfig.streamBatchSize
     local batchDelay = serverConfig.streamBatchDelay
 
-    if perfMode.enabled and batchSize > 0 then
-        Citizen.CreateThread(function()
-            local sent = 0
-            for _, entry in pairs(props) do
+    local function streamAll()
+        local sent = 0
+        for _, entry in pairs(props) do
+            local dx, dy, dz = playerCoords.x - entry.posX, playerCoords.y - entry.posY, playerCoords.z - entry.posZ
+            if (dx * dx + dy * dy + dz * dz) <= streamR2 then
                 broadcastEntry(src, entry)
                 sent = sent + 1
-                if sent % batchSize == 0 then Wait(batchDelay) end
+                if batchSize > 0 and sent % batchSize == 0 then
+                    Wait(batchDelay)
+                end
             end
-        end)
-    else
-        for _, entry in pairs(props) do
-            broadcastEntry(src, entry)
         end
     end
+
+    Citizen.CreateThread(streamAll)
 end)
 
 for i = 1, #sharedConfig.props do
@@ -496,18 +509,4 @@ lib.addCommand('loadprops', {
     print(locale('log_reload_complete'))
 end)
 
-Citizen.CreateThread(function()
-    while true do
-        Wait(serverConfig.perfModeCheckIntervalMs)
-        local n = #GetPlayers()
-        local enabled = n > serverConfig.perfModePlayerThreshold
-        if enabled ~= perfMode.last then
-            perfMode.enabled = enabled
-            perfMode.last    = enabled
-            dprint(('perf mode %s (players=%d threshold=%d)'):format(
-                enabled and 'ENABLED' or 'DISABLED', n, serverConfig.perfModePlayerThreshold))
-        else
-            perfMode.enabled = enabled
-        end
-    end
-end)
+

@@ -31,7 +31,6 @@ local pendingPlacement = {}
 local promptGroup = GetRandomIntInRange(0, 0xffffff)
 ---@type table<string, any>
 local Prompts  = {}
-local perfMode = { enabled = false, last = nil }
 
 ---@param ... any
 local function dprint(...)
@@ -436,22 +435,6 @@ RegisterNetEvent('tk_placeable:client:clearAll', function()
     pendingPlacement = {}
 end)
 
-CreateThread(function()
-    while true do
-        Wait(clientConfig.perfModeCheckIntervalMs)
-        local n = #GetActivePlayers()
-        local enabled = n > clientConfig.perfModePlayerThreshold
-        if enabled ~= perfMode.last then
-            perfMode.enabled = enabled
-            perfMode.last    = enabled
-            dprint(('perf mode %s (active=%d threshold=%d)'):format(
-                enabled and 'ENABLED' or 'DISABLED', n, clientConfig.perfModePlayerThreshold))
-        else
-            perfMode.enabled = enabled
-        end
-    end
-end)
-
 AddEventHandler('onResourceStop', function(resource)
     if resource ~= GetCurrentResourceName() then return end
     print(locale('log_resource_stopping'))
@@ -466,8 +449,7 @@ end)
 RegisterCommand('placeable_debug', function()
     local count = 0
     for _ in pairs(spawnedProps) do count = count + 1 end
-    print(('[tk_placeable] spawned=%d perf=%s'):format(
-        count, tostring(perfMode.enabled)))
+    dprint('spawned=%d', count)
 end, false)
 
 initPrompts()

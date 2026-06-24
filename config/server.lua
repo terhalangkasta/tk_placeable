@@ -4,10 +4,7 @@ return {
         save   = 1500,
         delete = 1500,
     },
-    perfModeRateMultiplier  = 1.5,
-    perfModePlayerThreshold = 100,
-    perfModeCheckIntervalMs = 60000,
-    streamBatchSize         = 50, -- 0 = unlimited
-    streamBatchDelay        = 50,
-    adminGroups             = { 'admin', 'god' },
+    streamBatchSize  = 50, -- 0 = unlimited
+    streamBatchDelay = 50,
+    adminGroups      = { 'admin', 'god' },
 }
